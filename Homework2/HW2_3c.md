@@ -148,11 +148,11 @@ curve(x * exp(-x),
 
 ![](HW2_3c_files/figure-commonmark/unnamed-chunk-5-1.png)
 
-Both histograms are similar to the target density (f(x)=xe^{-x}),
+Both histograms are similar to the target density $f(x)=xe^{-x}$,
 indicating that the rejection sampler is producing the correct
-distribution. For (), the empirical acceptance fraction is close to the
-theoretical value (e/4). For (), the theoretical acceptance fraction
-decreases to approximately (0.435). The () requires substantially more
-proposals per accepted sample and tends to have a larger mean
-computation time per accepted sample. The proposal with () is more
-efficient.
+distribution. For $\lambda=0.5$, the empirical acceptance fraction is
+close to the theoretical value $e/4\approx0.680$. For $\lambda=0.2$, the
+theoretical acceptance fraction decreases to approximately $0.435$. The
+$\lambda=0.2$ proposal requires substantially more proposals per
+accepted sample and tends to have a larger mean computation time per
+accepted sample. The proposal with $\lambda=0.5$ is more efficient.
