@@ -36,6 +36,7 @@ t0 <- 0.050
 # Empirical P(T > 50 ms)
 emp_tail <- mean(T > t0)
 
+# Theoretical P(T > 50 ms)
 theory_tail <- a * exp(-lambda_f * t0) +
                (1 - a) * exp(-lambda_s * t0)
 
