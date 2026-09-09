@@ -1,0 +1,83 @@
+---
+title: "HW2 Q4(c) code"
+format: gfm
+editor: visual
+---
+
+```{r}
+set.seed(123)
+
+n <- 1e5
+a <- 0.9
+lambda_f <- 1000  
+lambda_s <- 10     
+
+
+# Bernoulli draw: TRUE = F, FALSE = S
+B <- rbinom(n, size = 1, prob = a)
+
+# One uniform draw for inverse-transform sampling
+U <- runif(n)
+
+# Inverse transform for the selected exponential component
+T <- ifelse(B == 1,
+            -log(1-U) / lambda_f,
+            -log(1-U) / lambda_s)
+
+# Empirical mean
+emp_mean <- mean(T)
+
+# Theoretical mean
+theory_mean <- a / lambda_f + (1 - a) / lambda_s
+
+# Threshold: 50 ms = 0.050 s
+t0 <- 0.050
+
+# Empirical P(T > 50 ms)
+emp_tail <- mean(T > t0)
+
+theory_tail <- a * exp(-lambda_f * t0) +
+               (1 - a) * exp(-lambda_s * t0)
+
+cat("Empirical mean:   ", emp_mean, "s\n")
+cat("Theoretical mean: ", theory_mean, "s\n\n")
+
+cat("Empirical P(T > 50 ms):   ", emp_tail, "\n")
+cat("Theoretical P(T > 50 ms): ", theory_tail, "\n")
+
+# Restrict displayed range so both components are easy to see
+xmax <- 1
+breaks <- seq(0, xmax, length.out = 100)
+
+h <- hist(T[T <= xmax],
+          breaks = breaks,
+          plot = FALSE)
+
+# Normalize using the FULL sample size n
+# Histogram estimates the original density f(t)
+binwidth <- diff(h$breaks)
+density_full <- h$counts / (n * binwidth)
+
+keep <- density_full > 0
+
+plot(h$mids[keep], density_full[keep],
+     log = "y",
+     type = "h",
+     lwd = 5,
+     xlab = "Dwell time t (s)",
+     ylab = "Density (log scale)",
+     main = "Mixture of Exponential Dwell Times",
+     ylim = c(1e-3, 1e3))
+
+curve(
+  a * lambda_f * exp(-lambda_f * x) +
+    (1 - a) * lambda_s * exp(-lambda_s * x),
+  from = 0,
+  to = xmax,
+  add = TRUE,
+  lwd = 2,
+  col = "red"
+)
+
+
+```
