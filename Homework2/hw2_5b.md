@@ -1,0 +1,36 @@
+# hw2_5b
+
+
+Pseudocode:
+
+``` markdown
+Draw U ~ Uniform(0,1)
+Set Z = 1 - sqrt(1-U)
+```
+
+``` r
+# Part (b): sample h(z) = 2(1-z) by inversion
+set.seed(123)
+
+n_samp <- 1e5
+
+# Generate U ~ Uniform(0,1)
+u <- runif(n_samp)
+
+# Inverse CDF
+z <- 1 - sqrt(1 - u)
+
+# Sample mean
+mean_z <- mean(z)
+
+# Compare with theoretical mean = 1/3
+mean_z
+```
+
+    [1] 0.3327389
+
+``` r
+1/3
+```
+
+    [1] 0.3333333
