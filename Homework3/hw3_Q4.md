@@ -1,0 +1,333 @@
+# HW3_Q4
+
+
+### Q4 (b) Simulation for one lion
+
+Let $X_n$ denote the lamb position and $Y_n$ denote the lion position.  
+The lamb starts at $X_0=0$, the lion starts at $Y_0=10$, and both
+independently move $+1$ or $-1$ with probability $1/2$ at each time
+step.
+
+The empirical survival probability is estimated as the proportion of
+realizations that have not yet been captured by time $t$.
+
+In question (b), we simulate $R=20000$ realizations of the lamb and lion
+random walks, and estimate the survival probability $S_1(t)$ for
+$t=0,1,\ldots,10000$.
+
+``` r
+set.seed(123)
+
+R <- 20000
+Tmax <- 10000
+
+X <- rep(0, R)      # lamb
+Y <- rep(10, R)     # lion
+
+# Logical vector indicating which lambs are still alive
+alive <- rep(TRUE, R)
+
+S1 <- numeric(Tmax + 1)
+S1[1] <- 1
+
+for (t in 1:Tmax) {
+
+  # Only update realizations that are still alive
+  idx <- which(alive)
+
+  if (length(idx) == 0) {
+    S1[t + 1] <- 0
+    next
+  }
+
+  # Vectorized moves for all surviving realizations
+  X[idx] <- X[idx] + sample(
+    c(-1, 1),
+    length(idx),
+    replace = TRUE
+  )
+
+  Y[idx] <- Y[idx] + sample(
+    c(-1, 1),
+    length(idx),
+    replace = TRUE
+  )
+
+  caught <- idx[X[idx] == Y[idx]]
+  alive[caught] <- FALSE
+
+  S1[t + 1] <- mean(alive)
+}
+
+time <- 0:Tmax
+```
+
+fit the slope over $10^2 ≤t≤ 10^4$
+
+``` r
+fit_idx <- time >= 100 &
+           time <= 10000 &
+           S1 > 0
+
+fit1 <- lm(log(S1[fit_idx]) ~ log(time[fit_idx]))
+
+beta1_hat <- -coef(fit1)[2]
+
+beta1_hat
+```
+
+    log(time[fit_idx]) 
+             0.4939991 
+
+``` r
+erf <- function(x) {
+  2 * pnorm(x * sqrt(2)) - 1
+}
+
+S1_theory <- rep(NA_real_, length(time))
+
+positive_t <- time > 0
+
+S1_theory[positive_t] <-
+  erf(10 / (2 * sqrt(time[positive_t])))
+```
+
+``` r
+plot_idx <- time > 0 & S1 > 0
+
+plot(
+  time[plot_idx],
+  S1[plot_idx],
+  log = "xy",
+  type = "l",
+  lwd = 2,
+  col = "black",
+  xlab = "Time t",
+  ylab = expression(S[1](t)),
+  main = sprintf(
+    "One lion: fitted beta = %.3f, fit window 10^2 <= t <= 10^4",
+    beta1_hat
+  )
+)
+
+lines(
+  time[positive_t],
+  S1_theory[positive_t],
+  lwd = 2,
+  lty = 2,
+  col = "blue"
+)
+
+
+fit_time <- time[fit_idx]
+fit_survival <- exp(predict(fit1))
+
+lines(
+  fit_time,
+  fit_survival,
+  lwd = 2,
+  lty = 3,
+  col = "red"
+)
+
+legend(
+  "bottomleft",
+  legend = c(
+    "Simulation",
+    "Continuum approximation",
+    "Power-law fit"
+  ),
+  col = c("black", "blue", "red"),
+  lty = c(1, 2, 3),
+  lwd = 2,
+  bty = "n"
+)
+```
+
+![](hw3_Q4_files/figure-commonmark/unnamed-chunk-4-1.png)
+
+## Q4 (c) Simulation for two lion
+
+``` r
+set.seed(123)
+
+R <- 20000
+Tmax <- 10000
+
+
+X  <- rep(0, R)       # lamb
+Y1 <- rep(10, R)      # lion 1
+Y2 <- rep(10, R)      # lion 2
+
+alive2 <- rep(TRUE, R)
+
+S2 <- numeric(Tmax + 1)
+S2[1] <- 1
+
+for (t in 1:Tmax) {
+
+  idx <- which(alive2)
+
+  if (length(idx) == 0) {
+    S2[t + 1] <- 0
+    next
+  }
+
+  # Vectorized random-walk steps
+  X[idx] <- X[idx] +
+    sample(c(-1, 1), length(idx), replace = TRUE)
+
+  Y1[idx] <- Y1[idx] +
+    sample(c(-1, 1), length(idx), replace = TRUE)
+
+  Y2[idx] <- Y2[idx] +
+    sample(c(-1, 1), length(idx), replace = TRUE)
+
+  # Captured if the lamb meets either lion
+  caught <- idx[
+    X[idx] == Y1[idx] |
+    X[idx] == Y2[idx]
+  ]
+
+  alive2[caught] <- FALSE
+
+  # Proportion still alive
+  S2[t + 1] <- mean(alive2)
+}
+```
+
+``` r
+fit2_idx <- time >= 100 &
+            time <= 10000 &
+            S2 > 0
+
+fit2 <- lm(
+  log(S2[fit2_idx]) ~ log(time[fit2_idx])
+)
+
+beta2_hat <- -coef(fit2)[2]
+
+beta2_hat
+```
+
+    log(time[fit2_idx]) 
+              0.7329429 
+
+``` r
+S1_sq <- S1^2
+```
+
+``` r
+table_times <- c(100, 1000, 10000)
+
+results_table <- data.frame(
+  t = table_times,
+  S2 = S2[table_times + 1],
+  S1_squared = S1[table_times + 1]^2
+)
+
+knitr::kable(
+  results_table,
+  digits = 4,
+  col.names = c("t", "S2(t)", "S1(t)^2")
+)
+```
+
+|     t |  S2(t) | S1(t)^2 |
+|------:|-------:|--------:|
+|   100 | 0.3568 |  0.2658 |
+|  1000 | 0.0704 |  0.0308 |
+| 10000 | 0.0132 |  0.0031 |
+
+``` r
+# Continuum prediction from part (b)
+erf <- function(x) {
+  2 * pnorm(x * sqrt(2)) - 1
+}
+
+positive_t <- time > 0
+
+S1_theory <- rep(NA_real_, length(time))
+S1_theory[positive_t] <-
+  erf(10 / (2 * sqrt(time[positive_t])))
+
+# Valid plotting indices
+plot1_idx <- time > 0 & S1 > 0
+plot2_idx <- time > 0 & S2 > 0
+sq_idx    <- time > 0 & S1_sq > 0
+
+# Start with S1 simulation
+plot(
+  time[plot1_idx],
+  S1[plot1_idx],
+  log = "xy",
+  type = "l",
+  lwd = 2,
+  col = "black",
+  xlab = "Time t",
+  ylab = "Survival probability",
+  main = sprintf(
+    "beta1 = %.3f, beta2 = %.3f; fit window 10^2 <= t <= 10^4",
+    beta1_hat, beta2_hat
+  )
+)
+
+# Continuum prediction for S1
+lines(
+  time[positive_t],
+  S1_theory[positive_t],
+  col = "blue",
+  lwd = 2,
+  lty = 2
+)
+
+# S2 simulation
+lines(
+  time[plot2_idx],
+  S2[plot2_idx],
+  col = "red",
+  lwd = 2,
+  lty = 1
+)
+
+# S1(t)^2
+lines(
+  time[sq_idx],
+  S1_sq[sq_idx],
+  col = "darkgreen",
+  lwd = 2,
+  lty = 2
+)
+
+# Optional fitted S2 power law
+lines(
+  time[fit2_idx],
+  exp(predict(fit2)),
+  col = "purple",
+  lwd = 2,
+  lty = 3
+)
+
+legend(
+  "bottomleft",
+  legend = c(
+    expression(S[1](t)~simulation),
+    expression(S[1](t)~continuum),
+    expression(S[2](t)~simulation),
+    expression(S[1](t)^2),
+    expression(S[2](t)~fit)
+  ),
+  col = c(
+    "black",
+    "blue",
+    "red",
+    "darkgreen",
+    "purple"
+  ),
+  lty = c(1, 2, 1, 2, 3),
+  lwd = 2,
+  bty = "n"
+)
+```
+
+![](hw3_Q4_files/figure-commonmark/unnamed-chunk-9-1.png)
