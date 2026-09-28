@@ -1,1 +1,315 @@
+---
+title: "HW4 Q4 c"
+format: gfm
+editor: visual
+---
 
+Transition matrix:
+```{r}
+set.seed(123)
+
+# State order: U, I, M, F, A
+states <- c("U", "I", "M", "F", "A")
+
+P <- matrix(
+  c(
+    0,   1/2, 1/2, 0,   0,    # U
+    1/4, 0,   0,   1/2, 1/4,  # I
+    3/4, 0,   0,   0,   1/4,  # M
+    0,   0,   0,   1,   0,    # F
+    0,   0,   0,   0,   1     # A
+  ),
+  nrow = 5,
+  byrow = TRUE,
+  dimnames = list(states, states)
+)
+
+P
+```
+
+1. Discrete inverse transform
+
+```{r}
+# One step using discrete inverse transform
+
+draw_next_state <- function(current_state, P) {
+  
+  probs <- P[current_state, ]
+  cum_probs <- cumsum(probs)
+  
+  u <- runif(1)
+  
+  next_index <- which(u <= cum_probs)[1]
+  next_state <- colnames(P)[next_index]
+  
+  return(next_state)
+}
+
+# Simulate one chain until absorption
+
+simulate_one_chain <- function(start_state, P) {
+  
+  current_state <- start_state
+  T <- 0
+  
+  while (!(current_state %in% c("F", "A"))) {
+    
+    current_state <- draw_next_state(current_state, P)
+    T <- T + 1
+    
+  }
+  
+  return(c(T = T, fate = current_state))
+}
+
+```
+
+Simulate $10^4$ chains from U, I, M
+
+```{r}
+Nsim <- 1e4
+
+simulate_many <- function(start_state, Nsim, P) {
+  
+  out <- replicate(
+    Nsim,
+    simulate_one_chain(start_state, P)
+  )
+  
+  data.frame(
+    start = start_state,
+    T = as.numeric(out["T", ]),
+    fate = out["fate", ]
+  )
+}
+
+
+sim_U <- simulate_many("U", Nsim, P)
+sim_I <- simulate_many("I", Nsim, P)
+sim_M <- simulate_many("M", Nsim, P)
+
+sim_all <- rbind(sim_U, sim_I, sim_M)
+
+head(sim_all)
+```
+
+Compute simulation estimates:
+
+```{r}
+get_estimates <- function(dat) {
+  
+  c(
+    h_hat = mean(dat$fate == "F"),
+    g_hat = mean(dat$T),
+    tau_F_hat = mean(dat$T[dat$fate == "F"]),
+    tau_A_hat = mean(dat$T[dat$fate == "A"])
+  )
+}
+
+
+estimates <- rbind(
+  U = get_estimates(sim_U),
+  I = get_estimates(sim_I),
+  M = get_estimates(sim_M)
+)
+
+estimates
+
+```
+
+Compare simulation to exact values:
+
+```{r}
+exact <- data.frame(
+  start = c("U", "I", "M"),
+  
+  h_exact = c(
+    1/2,
+    5/8,
+    3/8
+  ),
+  
+  g_exact = c(
+    4,
+    2,
+    4
+  ),
+  
+  tau_F_exact = c(
+    4,
+    9/5,
+    5
+  ),
+  
+  tau_A_exact = c(
+    4,
+    7/3,
+    17/5
+  )
+)
+
+
+simulation <- data.frame(
+  start = rownames(estimates),
+  h_hat = estimates[, "h_hat"],
+  g_hat = estimates[, "g_hat"],
+  tau_F_hat = estimates[, "tau_F_hat"],
+  tau_A_hat = estimates[, "tau_A_hat"]
+)
+
+
+comparison <- merge(exact, simulation, by = "start")
+
+comparison <- comparison[
+  match(c("U", "I", "M"), comparison$start),
+]
+
+comparison
+```
+
+Extract Q and R:
+```{r}
+
+Q <- P[c("U", "I", "M"),
+       c("U", "I", "M")]
+
+R <- P[c("U", "I", "M"),
+       c("F", "A")]
+
+Q
+R
+```
+
+Exact PMF of T starting from I:
+
+```{r}
+max_n <- max(sim_I$T)
+
+# Starting distribution: start exactly at I
+v <- c(U = 0, I = 1, M = 0)
+
+pmf_joint_F <- numeric(max_n)
+pmf_joint_A <- numeric(max_n)
+
+for (n in 1:max_n) {
+  
+  # v currently equals e_I Q^(n-1)
+  absorption_prob <- as.numeric(v %*% R)
+  
+  pmf_joint_F[n] <- absorption_prob[1]
+  pmf_joint_A[n] <- absorption_prob[2]
+  
+  # Move one more step among transient states
+  v <- as.numeric(v %*% Q)
+  names(v) <- c("U", "I", "M")
+}
+
+
+# P_I(F) = h_I = 5/8
+# P_I(A) = 1 - h_I = 3/8
+
+h_I <- 5/8
+
+pmf_F <- pmf_joint_F / h_I
+pmf_A <- pmf_joint_A / (1 - h_I)
+
+
+exact_pmf <- data.frame(
+  n = 1:max_n,
+  P_T_given_F = pmf_F,
+  P_T_given_A = pmf_A
+)
+
+exact_pmf
+exact_pmf[exact_pmf$P_T_given_F > 0, ]
+```
+
+```{r}
+I_fold <- sim_I$T[sim_I$fate == "F"]
+I_agg  <- sim_I$T[sim_I$fate == "A"]
+```
+
+Histogram: folded runs
+
+```{r}
+max_fold <- max(I_fold)
+
+hist(
+  I_fold,
+  breaks = seq(0.5, max_fold + 0.5, by = 1),
+  probability = TRUE,
+  main = "First Passage Time from I | Folded",
+  xlab = "T",
+  ylab = "Probability",
+  xaxt = "n"
+)
+
+axis(
+  1,
+  at = seq(1, max_fold, by = 2)
+)
+
+n_fold <- seq(1, max_fold, by = 2)
+
+points(
+  n_fold,
+  pmf_F[n_fold],
+  pch = 19
+)
+
+lines(
+  n_fold,
+  pmf_F[n_fold],
+  lwd = 2
+)
+
+legend(
+  "topright",
+  legend = c("Simulation", "Exact conditional PMF"),
+  lty = c(NA, 1),
+  pch = c(15, 19),
+  bty = "n"
+)
+```
+
+Histogram: aggregated runs
+```{r}
+max_agg <- max(I_agg)
+
+hist(
+  I_agg,
+  breaks = seq(0.5, max_agg + 0.5, by = 1),
+  probability = TRUE,
+  main = "First Passage Time from I | Aggregated",
+  xlab = "T",
+  ylab = "Probability",
+  xaxt = "n"
+)
+
+axis(
+  1,
+  at = seq(1, max_agg, by = 2)
+)
+
+n_agg <- seq(1, max_agg, by = 2)
+
+points(
+  n_agg,
+  pmf_A[n_agg],
+  pch = 19
+)
+
+lines(
+  n_agg,
+  pmf_A[n_agg],
+  lwd = 2
+)
+
+legend(
+  "topright",
+  legend = c("Simulation", "Exact conditional PMF"),
+  lty = c(NA, 1),
+  pch = c(15, 19),
+  bty = "n"
+)
+```
