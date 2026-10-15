@@ -1102,3 +1102,68 @@ print(summary_table)
     2 0.8 0.008 1.7698760
     3 1.5 0.015 1.7958525
     4 3.0 0.030 0.9654864
+
+``` r
+# Simulation check for one R0 value
+
+simulate_T <- function(R0,
+                       N = 100,
+                       K = 10,
+                       gamma = 1,
+                       dt = 0.005,
+                       start = 1) {
+
+  beta <- R0 * gamma / N
+
+  x <- start
+  time <- 0
+
+  while (x != 0 && x != K) {
+
+    p <- beta * x * (N - x) * dt
+    q <- gamma * x * dt
+
+    u <- runif(1)
+
+    if (u < p) {
+
+      x <- x + 1
+
+    } else if (u < p + q) {
+
+      x <- x - 1
+
+    } else {
+
+      # stay at x
+      x <- x
+    }
+
+    time <- time + dt
+  }
+
+  return(time)
+}
+
+
+set.seed(123)
+
+R0_check <- 1.5
+B <- 100000
+
+sim_times <- replicate(
+  B,
+  simulate_T(
+    R0 = R0_check,
+    N = N,
+    K = K,
+    gamma = gamma,
+    dt = dt,
+    start = 1
+  )
+)
+
+cat("simulation e1 for R0=1.5:",mean(sim_times))
+```
+
+    simulation e1 for R0=1.5: 1.798149
