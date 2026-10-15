@@ -1,0 +1,869 @@
+---
+title: "HW6"
+format: gfm
+editor: visual
+---
+
+## Problem 1 (c)
+
+```{r}
+make_P <- function(m) {
+  P <- matrix(0, nrow = m, ncol = m)
+
+  # i -> i+1 with probability 1 for i < m
+  for (i in 1:(m - 1)) {
+    P[i, i + 1] <- 1
+  }
+
+  # m -> 1 or 2 with probability 1/2 each
+  P[m, 1] <- 0.5
+  P[m, 2] <- 0.5
+
+  P
+}
+
+
+# Find the smallest M such that P^M > 0 entrywise
+# B <- (B %*% P > 0)
+find_M <- function(P) {
+  m <- nrow(P)
+
+  # Start with P^1
+  B <- P > 0
+  M <- 1
+
+  while (!all(B)) {
+    B <- (B %*% P) > 0
+    M <- M + 1
+  }
+
+  M
+}
+
+
+# Second-largest eigenvalue modulus
+find_lambda2 <- function(P) {
+  eig <- eigen(P, only.values = TRUE)$values
+
+  # Sort by modulus, largest first
+  mods <- sort(Mod(eig), decreasing = TRUE)
+
+  # Largest is lambda_1 = 1
+  mods[2]
+}
+
+
+# Run for m = 3,...,12
+results <- data.frame(
+  m = 3:12,
+  M = NA,
+  Wielandt_bound = NA,
+  lambda2_modulus = NA
+)
+
+for (i in seq_along(results$m)) {
+
+  m <- results$m[i]
+  P <- make_P(m)
+
+  results$M[i] <- find_M(P)
+
+  results$Wielandt_bound[i] <- (m - 1)^2 + 1
+
+  results$lambda2_modulus[i] <- find_lambda2(P)
+}
+
+print(results)
+```
+```{r}
+plot(
+  results$m,
+  results$M,
+  type = "b",
+  pch = 16,
+  xlab = "m",
+  ylab = "M",
+  main = "Smallest M such that P^M > 0"
+)
+
+lines(
+  results$m,
+  results$Wielandt_bound,
+  type = "b",
+  pch = 1,
+  lty = 2
+)
+
+legend(
+  "topleft",
+  legend = c("Observed M", "Wielandt bound"),
+  pch = c(16, 1),
+  lty = c(1, 2)
+)
+```
+```{r}
+results$difference <- results$M - results$Wielandt_bound
+
+plot(
+  results$m,
+  results$difference,
+  type = "b",
+  pch = 16,
+  xlab = "m",
+  ylab = "M - Wielandt bound",
+  main = "Difference from Wielandt's bound"
+)
+
+abline(h = 0, lty = 2)
+```
+
+```{r}
+plot(
+  results$m,
+  results$lambda2_modulus,
+  type = "b",
+  pch = 16,
+  xlab = "m",
+  ylab = expression(abs(lambda[2])),
+  main = expression(paste("Second largest eigenvalue modulus ", abs(lambda[2])))
+)
+
+abline(h = 1, lty = 2)
+
+```
+
+## Problem 2 (c)
+
+```{r}
+# Read data --------------------------------------------------
+
+games <- read.csv("big12.csv", stringsAsFactors = FALSE)
+
+str(games)
+head(games)
+
+# Convert completed to numeric just in case
+games$completed <- as.integer(games$completed)
+
+# All teams appearing in the file
+teams <- sort(unique(c(games$home, games$away)))
+m <- length(teams)
+
+m
+teams
+```
+
+```{r}
+# Problem says m = 16
+stopifnot(m == 16)
+h_fun <- function(x) {
+  1/2 + 1/2 * sign(x - 1/2) * sqrt(abs(2 * x - 1))
+}
+
+
+# For a game where team i scores S and team j scores T,
+# compute h_ij
+game_h <- function(S, T) {
+
+  x <- (S + 1) / (S + T + 2)
+
+  h_fun(x)
+}
+
+
+g2025 <- subset(
+  games,
+  season == 2025 & completed == 1
+)
+
+g2026 <- subset(
+  games,
+  season == 2026 & completed == 1
+)
+
+
+
+# a_ij = [sum h_ij over games between i and j + w * Pi_ij]/[n_i + w(m - 1)]
+
+build_A <- function(game_data, teams, prior, w = 1) {
+
+  m <- length(teams)
+
+  A <- matrix(
+    0,
+    nrow = m,
+    ncol = m,
+    dimnames = list(teams, teams)
+  )
+
+  # n_i = number of completed games played by team i
+  n_games <- setNames(rep(0, m), teams)
+
+  # Sum of observed h_ij values
+  Hsum <- matrix(
+    0,
+    nrow = m,
+    ncol = m,
+    dimnames = list(teams, teams)
+  )
+
+  # Loop over completed games
+  for (g in seq_len(nrow(game_data))) {
+
+    home <- game_data$home[g]
+    away <- game_data$away[g]
+
+    S_home <- game_data$home_pts[g]
+    S_away <- game_data$away_pts[g]
+
+    # h value from each team's perspective
+    h_home <- game_h(S_home, S_away)
+    h_away <- game_h(S_away, S_home)
+
+    Hsum[home, away] <- Hsum[home, away] + h_home
+    Hsum[away, home] <- Hsum[away, home] + h_away
+
+    n_games[home] <- n_games[home] + 1
+    n_games[away] <- n_games[away] + 1
+  }
+
+  # Construct A
+  for (i in seq_len(m)) {
+
+    team_i <- teams[i]
+
+    denom <- n_games[team_i] + w * (m - 1)
+
+    for (j in seq_len(m)) {
+
+      if (i == j) {
+
+        A[i, j] <- 0
+
+      } else {
+
+        A[i, j] <-
+          (Hsum[i, j] + w * prior[i, j]) / denom
+      }
+    }
+  }
+
+  A
+}
+
+
+get_perron <- function(A) {
+
+  eig <- eigen(A)
+
+  # Perron eigenvalue = eigenvalue with largest modulus
+  idx <- which.max(Mod(eig$values))
+
+  lambda_star <- Re(eig$values[idx])
+
+  # Corresponding eigenvector
+  r <- Re(eig$vectors[, idx])
+
+  # Eigenvectors can come back with opposite sign
+  if (sum(r) < 0) {
+    r <- -r
+  }
+
+  # Normalize so rankings sum to 1
+  r <- r / sum(r)
+
+  names(r) <- rownames(A)
+
+  # Second largest eigenvalue modulus
+  eig_mod <- sort(Mod(eig$values), decreasing = TRUE)
+
+  lambda2_mod <- eig_mod[2]
+
+  ratio <- lambda2_mod / abs(lambda_star)
+
+  list(
+    r = r,
+    lambda_star = lambda_star,
+    lambda2_mod = lambda2_mod,
+    ratio = ratio,
+    eigenvalues = eig$values
+  )
+}
+```
+
+
+Try different prior
+
+```{r}
+
+# ============================================================
+# PRIOR 1: Flat prior
+#
+# Pi_ij = 1/2 for all i != j
+# ============================================================
+
+prior_flat <- matrix(
+  0.5,
+  nrow = m,
+  ncol = m,
+  dimnames = list(teams, teams)
+)
+
+diag(prior_flat) <- 0
+
+
+# ============================================================
+# PRIOR 2: Last-season head-to-head prior
+#
+# Pi_ij = mean h_ij over 2025 meetings
+# If teams did not meet, use 1/2
+# ============================================================
+
+prior_last <- matrix(
+  0.5,
+  nrow = m,
+  ncol = m,
+  dimnames = list(teams, teams)
+)
+
+diag(prior_last) <- 0
+
+
+for (i in seq_len(m)) {
+
+  for (j in seq_len(m)) {
+
+    if (i == j) next
+
+    team_i <- teams[i]
+    team_j <- teams[j]
+
+    # 2025 games involving i and j
+    pair_games <- g2025[
+      (g2025$home == team_i & g2025$away == team_j) |
+      (g2025$home == team_j & g2025$away == team_i),
+    ]
+
+    if (nrow(pair_games) > 0) {
+
+      h_values <- numeric(nrow(pair_games))
+
+      for (g in seq_len(nrow(pair_games))) {
+
+        if (pair_games$home[g] == team_i) {
+
+          S_i <- pair_games$home_pts[g]
+          S_j <- pair_games$away_pts[g]
+
+        } else {
+
+          S_i <- pair_games$away_pts[g]
+          S_j <- pair_games$home_pts[g]
+        }
+
+        h_values[g] <- game_h(S_i, S_j)
+      }
+
+      prior_last[i, j] <- mean(h_values)
+    }
+  }
+}
+
+
+# Check required symmetry:
+# Pi_ij + Pi_ji should be 1
+max(abs(prior_last + t(prior_last) -
+          (matrix(1, m, m) - diag(m))))
+
+
+# ============================================================
+# PRIOR 3: 2025 overall team-strength prior
+#
+# First estimate 2025 Keener strengths using a flat prior.
+# Then define
+#
+# Pi_ij = s_i / (s_i + s_j)
+# ============================================================
+
+A_2025 <- build_A(
+  game_data = g2025,
+  teams = teams,
+  prior = prior_flat,
+  w = 1
+)
+
+fit_2025 <- get_perron(A_2025)
+
+strength_2025 <- fit_2025$r
+
+strength_2025
+
+
+prior_strength <- matrix(
+  0,
+  nrow = m,
+  ncol = m,
+  dimnames = list(teams, teams)
+)
+
+for (i in seq_len(m)) {
+
+  for (j in seq_len(m)) {
+
+    if (i == j) {
+
+      prior_strength[i, j] <- 0
+
+    } else {
+
+      prior_strength[i, j] <-
+        strength_2025[i] /
+        (strength_2025[i] + strength_2025[j])
+    }
+  }
+}
+
+
+# Check Pi_ij + Pi_ji = 1
+max(abs(prior_strength + t(prior_strength) -
+          (matrix(1, m, m) - diag(m))))
+
+
+w <- 1
+
+A_flat <- build_A(
+  g2026,
+  teams,
+  prior_flat,
+  w
+)
+
+A_last <- build_A(
+  g2026,
+  teams,
+  prior_last,
+  w
+)
+
+A_strength <- build_A(
+  g2026,
+  teams,
+  prior_strength,
+  w
+)
+
+
+fit_flat <- get_perron(A_flat)
+fit_last <- get_perron(A_last)
+fit_strength <- get_perron(A_strength)
+
+```
+
+```{r}
+# lambda*, |lambda_2| / lambda*
+
+summary_results <- data.frame(
+  prior = c(
+    "Flat",
+    "2025 head-to-head",
+    "2025 overall strength"
+  ),
+  lambda_star = c(
+    fit_flat$lambda_star,
+    fit_last$lambda_star,
+    fit_strength$lambda_star
+  ),
+  lambda2_mod = c(
+    fit_flat$lambda2_mod,
+    fit_last$lambda2_mod,
+    fit_strength$lambda2_mod
+  ),
+  lambda2_ratio = c(
+    fit_flat$ratio,
+    fit_last$ratio,
+    fit_strength$ratio
+  )
+)
+
+print(summary_results)
+
+
+rankings <- data.frame(
+  team = teams,
+  flat = fit_flat$r[teams],
+  last_season = fit_last$r[teams],
+  strength_prior = fit_strength$r[teams]
+)
+
+# Add rank numbers: 1 = strongest
+rankings$rank_flat <-
+  rank(-rankings$flat, ties.method = "min")
+
+rankings$rank_last <-
+  rank(-rankings$last_season, ties.method = "min")
+
+rankings$rank_strength <-
+  rank(-rankings$strength_prior, ties.method = "min")
+
+
+# Sort according to flat ranking just for display
+rankings <- rankings[
+  order(rankings$rank_flat),
+]
+
+print(rankings)
+
+# ----- Flat prior -----
+
+tmp <- rankings[
+  order(rankings$flat, decreasing = TRUE),
+]
+
+barplot(
+  tmp$flat,
+  names.arg = tmp$team,
+  las = 2,
+  cex.names = 0.7,
+  ylab = "Perron ranking r",
+  main = "2026 Keener ranking: flat prior"
+)
+
+
+# ----- Last-season prior -----
+
+tmp <- rankings[
+  order(rankings$last_season, decreasing = TRUE),
+]
+
+barplot(
+  tmp$last_season,
+  names.arg = tmp$team,
+  las = 2,
+  cex.names = 0.7,
+  ylab = "Perron ranking r",
+  main = "2026 Keener ranking: 2025 head-to-head prior"
+)
+
+
+# ----- Overall 2025 strength prior -----
+
+tmp <- rankings[
+  order(rankings$strength_prior, decreasing = TRUE),
+]
+
+barplot(
+  tmp$strength_prior,
+  names.arg = tmp$team,
+  las = 2,
+  cex.names = 0.7,
+  ylab = "Perron ranking r",
+  main = "2026 Keener ranking: 2025 strength prior"
+)
+```
+
+
+Predict games
+
+```{r}
+future_games <- subset(
+  games,
+  season == 2026 & completed == 0
+)
+
+future_games[
+  order(future_games$week),
+  c("week", "home", "away")
+]
+
+
+# See which weeks remain
+sort(unique(future_games$week))
+
+TARGET_WEEK <- 6  
+target_games <- subset(
+  games,
+  season == 2026 &
+    completed == 0 &
+    week == TARGET_WEEK
+)
+
+target_games[, c("week", "home", "away")]
+```
+
+
+
+```{r}
+predict_games <- function(game_data, r) {
+
+  result <- data.frame(
+    home = game_data$home,
+    away = game_data$away,
+    home_r = r[game_data$home],
+    away_r = r[game_data$away],
+    predicted_winner = NA_character_
+  )
+
+  result$predicted_winner <- ifelse(
+    result$home_r > result$away_r,
+    result$home,
+    result$away
+  )
+
+  rownames(result) <- NULL
+
+  result
+}
+
+
+pred_flat <- predict_games(
+  target_games,
+  fit_flat$r
+)
+
+pred_last <- predict_games(
+  target_games,
+  fit_last$r
+)
+
+pred_strength <- predict_games(
+  target_games,
+  fit_strength$r
+)
+
+
+pred_flat
+pred_last
+pred_strength
+
+
+
+predictions <- data.frame(
+  home = target_games$home,
+  away = target_games$away,
+  flat = pred_flat$predicted_winner,
+  last_season = pred_last$predicted_winner,
+  strength_prior = pred_strength$predicted_winner
+)
+
+print(predictions)
+
+
+
+majority_vote <- function(x) {
+
+  tab <- table(x)
+
+  names(tab)[which.max(tab)]
+}
+
+predictions$consensus <- apply(
+  predictions[, c(
+    "flat",
+    "last_season",
+    "strength_prior"
+  )],
+  1,
+  majority_vote
+)
+
+print(predictions)
+
+```
+
+## Problem 3 (c)
+
+```{r}
+
+exact_h1 <- function(N, R0) {
+
+  K <- N / 10
+
+  # rho_0 = 1
+  rho <- numeric(K)
+  rho[1] <- 1
+
+  # rho_j = product_{k=1}^j N / [R0 (N-k)]
+  
+  # In R indexing:
+  # rho[j + 1] corresponds to mathematical rho_j
+  if (K > 1) {
+    for (j in 1:(K - 1)) {
+
+      rho[j + 1] <-
+        rho[j] * N / (R0 * (N - j))
+    }
+  }
+
+  # For n = 1:
+  # h1 = rho_0 / sum_{j=0}^{K-1} rho_j
+  #    = 1 / sum(rho)
+  h1 <- 1 / sum(rho)
+
+  return(h1)
+}
+
+
+
+R0_values <- seq(
+  from = 0.5,
+  to = 3,
+  length.out = 500
+)
+
+
+
+h1_N100 <- sapply(
+  R0_values,
+  function(r) exact_h1(N = 100, R0 = r)
+)
+
+h1_N1000 <- sapply(
+  R0_values,
+  function(r) exact_h1(N = 1000, R0 = r)
+)
+
+
+```
+
+```{r}
+# Theoretical curve requested in the question
+theory <- 1 - 1 / R0_values
+
+
+# Plot
+plot(
+  R0_values,
+  h1_N100,
+  type = "l",
+  lwd = 2,
+  ylim = c(min(theory), 0.8),
+  xlab = expression(R[0]),
+  ylab = expression(h[1]),
+  main = expression(
+    paste("Exact ", h[1], " vs. ", 1 - 1/R[0])
+  )
+)
+
+# N = 1000
+lines(
+  R0_values,
+  h1_N1000,
+  lwd = 2,
+  lty = 2
+)
+
+# 1 - 1/R0 in RED
+lines(
+  R0_values,
+  theory,
+  col = "red",
+  lwd = 2
+)
+
+# Reference lines
+abline(h = 0, lty = 3)
+abline(v = 1, lty = 3)
+
+
+# Legend
+legend(
+  "bottomright",
+  legend = c(
+    "Exact h1, N = 100",
+    "Exact h1, N = 1000",
+    expression(1 - 1/R[0])
+  ),
+  lty = c(1, 2, 1),
+  lwd = 2,
+  col = c("black", "black", "red"),
+  bty = "n"
+)
+```
+## Problem 3 (d)
+
+```{r}
+
+N <- 100
+K <- 10
+gamma <- 1
+dt <- 0.005
+
+R0_values <- c(0.5, 0.8, 1.5, 3)
+
+
+expected_hitting_time <- function(R0,
+                                  N = 100,
+                                  K = 10,
+                                  gamma = 1,
+                                  dt = 0.005) {
+
+  # R0 = beta * N / gamma
+  beta <- R0 * gamma / N
+
+  # Unknowns are e_1,...,e_{K-1}
+  A <- matrix(
+    0,
+    nrow = K - 1,
+    ncol = K - 1
+  )
+
+  b <- rep(dt, K - 1)
+
+  for (n in 1:(K - 1)) {
+
+    p <- beta * n * (N - n) * dt
+    q <- gamma * n * dt
+
+    i <- n
+
+    # coefficient of e_n
+    A[i, i] <- p + q
+
+    # coefficient of e_{n-1}
+    if (n > 1) {
+      A[i, i - 1] <- -q
+    }
+
+    # coefficient of e_{n+1}
+    if (n < K - 1) {
+      A[i, i + 1] <- -p
+    }
+
+    # e_0 = e_K = 0, so boundary terms contribute nothing
+  }
+
+  e <- solve(A, b)
+
+  names(e) <- paste0("e", 1:(K - 1))
+
+  return(
+    list(
+      R0 = R0,
+      beta = beta,
+      e = e,
+      e1 = e[1]
+    )
+  )
+}
+
+
+
+results <- lapply(
+  R0_values,
+  expected_hitting_time,
+  N = N,
+  K = K,
+  gamma = gamma,
+  dt = dt
+)
+
+
+
+summary_table <- data.frame(
+  R0 = sapply(results, function(x) x$R0),
+  beta = sapply(results, function(x) x$beta),
+  e1 = sapply(results, function(x) x$e1)
+)
+
+print(summary_table)
+```
