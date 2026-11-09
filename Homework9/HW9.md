@@ -1,1 +1,122 @@
+# HW9
 
+
+## Question 3(c)
+
+``` r
+library(expm)
+```
+
+    Loading required package: Matrix
+
+
+    Attaching package: 'expm'
+
+    The following object is masked from 'package:Matrix':
+
+        expm
+
+``` r
+Q <- matrix(c(
+  -2, 2, 0, 0,
+   1,-3, 2, 0,
+   0, 2,-4, 2,
+   0, 0, 3,-3
+), nrow = 4, byrow = TRUE)
+
+x0 <- c(1, 0, 0, 0)
+pi <- c(3, 6, 6, 4) / 19
+
+lambda <- sort(Re(eigen(Q)$values), decreasing = TRUE)
+lambda2 <- lambda[2]
+
+times <- seq(0, 5, length.out = 501)
+
+x_t <- t(sapply(times, function(t) {
+  as.numeric(x0 %*% expm(t * Q))
+}))
+colnames(x_t) <- paste0("State ", 0:3)
+
+TV <- 0.5 * rowSums(abs(sweep(x_t, 2, pi)))
+
+tv_fun <- function(t) {
+  xt <- as.numeric(x0 %*% expm(t * Q))
+  0.5 * sum(abs(xt - pi))
+}
+
+t_001 <- uniroot(
+  function(t) tv_fun(t) - 0.01,
+  interval = c(0, 5)
+)$root
+
+t_approx <- log(100) / abs(lambda2)
+
+cat("Eigenvalues:", lambda, "\n")
+```
+
+    Eigenvalues: -2.341358e-17 -1.510711 -3.710831 -6.778457 
+
+``` r
+cat("Sum of eigenvalues:", sum(lambda), "\n")
+```
+
+    Sum of eigenvalues: -12 
+
+``` r
+cat("Trace of Q:", sum(diag(Q)), "\n")
+```
+
+    Trace of Q: -12 
+
+``` r
+cat("Time TV = 0.01:", t_001, "hours\n")
+```
+
+    Time TV = 0.01: 2.897989 hours
+
+``` r
+cat("Approximation ln(100)/|lambda2|:", t_approx, "hours\n")
+```
+
+    Approximation ln(100)/|lambda2|: 3.048345 hours
+
+``` r
+par(mfrow = c(1, 2))
+
+matplot(times, x_t, type = "l", lty = 1,
+        lwd = 2, col = 1:4,
+        xlab = "Time (hours)",
+        ylab = "Probability",
+        main = "State Probabilities")
+
+abline(h = pi, col = 1:4, lty = 3)
+legend("right", legend = colnames(x_t),
+       col = 1:4, lty = 1, lwd = 2,
+       bty = "n")
+
+plot(times, TV, type = "l", log = "y",
+     lwd = 2, ylim = c(1e-4, 1),
+     xlab = "Time (hours)",
+     ylab = "TV Distance (log scale)",
+     main = "Convergence to Stationarity")
+
+t_ref <- 3
+reference <- tv_fun(t_ref) *
+  exp(lambda2 * (times - t_ref))
+
+lines(times, reference, col = "red",
+      lty = 2, lwd = 2)
+abline(h = 0.01, col = "gray50", lty = 3)
+abline(v = t_001, col = "blue", lty = 3)
+
+legend("topright",
+       legend = c("TV(t)", "Slope lambda2", "TV = 0.01"),
+       col = c("black", "red", "gray50"),
+       lty = c(1, 2, 3), bty = "n")
+```
+
+![](HW9_files/figure-commonmark/unnamed-chunk-2-1.png)
+
+``` r
+par(mfrow = c(1, 1))
+```
